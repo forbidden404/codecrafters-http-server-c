@@ -7,6 +7,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+const char *ok_message = "HTTP/1.1 200 OK\r\n\r\n";
+const char *bad_request_message = "HTTP/1.1 401 Bad Request\r\n\r\n";
+const char *not_found_message = "HTTP/1.1 404 Not Found\r\n\r\n";
+
 void log_send(int socket_fd, const void *buffer, size_t buffer_size,
               int flags) {
   if (send(socket_fd, buffer, buffer_size, flags) == -1) {
@@ -37,6 +41,67 @@ char *generate_plain_response(const char *message) {
   strncat(response, message, message_len);
 
   return response;
+}
+
+int root(int socket_fd, const char *buffer, const char *http_method,
+         const char *http_request_target) {
+  if (strncmp(http_request_target, "/", strlen(http_request_target)) != 0) {
+    return 0;
+  }
+
+  if (strncmp(http_method, "GET", 3) != 0) {
+    return 0;
+  }
+
+  log_send(socket_fd, ok_message, strlen(ok_message), 0);
+  return 1;
+}
+
+int echo(int socket_fd, const char *buffer, const char *http_method,
+         const char *http_request_target) {
+  const char *echo_str = "/echo/";
+  size_t echo_len = strlen(echo_str);
+  char message[64] = {0};
+  const char *message_fmt = "/echo/%s";
+
+  if (strncmp(http_request_target, echo_str, echo_len) != 0) {
+    return 0;
+  }
+
+  if (strncmp(http_method, "GET", 3) != 0) {
+    return 0;
+  }
+
+  if (sscanf(http_request_target, message_fmt, message) != 1) {
+    return 0;
+  }
+
+  char *response = generate_plain_response(message);
+  log_send(socket_fd, response, strlen(response), 0);
+
+  return 1;
+}
+
+int user_agent(int socket_fd, const char *buffer, const char *http_method,
+               const char *http_request_target) {
+  const char *user_agent_str = "/user-agent";
+  size_t user_agent_len = strlen(user_agent_str);
+
+  if (strncmp(http_request_target, user_agent_str, user_agent_len) != 0) {
+    return 0;
+  }
+
+  const char *header_fmt = "%*s %*s %*s\r\nHost: %*s\r\nUser-Agent: %s\r\n";
+  char user_agent_value[64] = {0};
+
+  if (sscanf(buffer, header_fmt, user_agent_value) != 1) {
+    return 0;
+  }
+
+  char *response = generate_plain_response(user_agent_value);
+  log_send(socket_fd, response, strlen(response), 0);
+
+  return 1;
 }
 
 int main() {
@@ -90,10 +155,6 @@ int main() {
                                (socklen_t *)&client_addr_len);
   printf("Client connected\n");
 
-  const char *ok_message = "HTTP/1.1 200 OK\r\n\r\n";
-  const char *bad_request_message = "HTTP/1.1 401 Bad Request\r\n\r\n";
-  const char *not_found_message = "HTTP/1.1 404 Not Found\r\n\r\n";
-
   char *buffer = malloc(1024 * sizeof(char));
   while (recv(accepted_socket, buffer, 1024, 0) != 0) {
     printf("Request received: %s \n", buffer);
@@ -104,24 +165,23 @@ int main() {
     if (sscanf(buffer, format, http_method, http_request_target) == 2) {
       printf("Request parsed => method : '%s' \t request-target : '%s' \n",
              http_method, http_request_target);
-      if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
-        log_send(accepted_socket, ok_message, strlen(ok_message), 0);
-      } else {
-        const char *echo_str = "/echo/";
-        size_t echo_len = strlen(echo_str);
-        char message[64] = {0};
-        const char *message_fmt = "/echo/%s";
 
-        if (strncmp(http_request_target, echo_str, echo_len) == 0 &&
-            sscanf(http_request_target, message_fmt, message) == 1) {
-          char *response = generate_plain_response(message);
-          printf("Message to send: %s\n", response);
-          log_send(accepted_socket, response, strlen(response), 0);
-        } else {
-          log_send(accepted_socket, not_found_message,
-                   strlen(not_found_message), 0);
-        }
+      int (*handlers[])(int, const char *, const char *,
+                        const char *) = {root, echo, user_agent};
+      size_t handlers_len = 3;
+      int index = 0;
+      int has_been_handled = 0;
+
+      for (; index < handlers_len && has_been_handled == 0; index++) {
+        has_been_handled = handlers[index](accepted_socket, buffer, http_method,
+                                           http_request_target);
       }
+
+      if (!has_been_handled) {
+        log_send(accepted_socket, not_found_message, strlen(not_found_message),
+                 0);
+      }
+
     } else {
       log_send(accepted_socket, bad_request_message,
                strlen(bad_request_message), 0);
