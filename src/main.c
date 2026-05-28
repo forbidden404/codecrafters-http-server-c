@@ -14,6 +14,31 @@ void log_send(int socket_fd, const void *buffer, size_t buffer_size,
   }
 }
 
+char *generate_plain_response(const char *message) {
+  size_t message_len = strlen(message);
+
+  const char *status_line = "HTTP/1.1 200 OK\r\n";
+  size_t status_line_len = strlen(status_line);
+
+  const char *content_type = "Content-Type: text/plain\r\n";
+  size_t content_type_len = strlen(content_type);
+  char *content_length = calloc(64, sizeof(char));
+
+  snprintf(content_length, 64, "Content-Length: %lu\r\n\r\n", message_len);
+  size_t content_length_len = strlen(content_length);
+
+  size_t total_len =
+      message_len + status_line_len + content_type_len + content_length_len;
+  char *response = calloc(total_len, sizeof(char));
+
+  strncat(response, status_line, status_line_len);
+  strncat(response, content_type, content_type_len);
+  strncat(response, content_length, content_length_len);
+  strncat(response, message, message_len);
+
+  return response;
+}
+
 int main() {
   // Disable output buffering
   setbuf(stdout, NULL);
@@ -79,13 +104,23 @@ int main() {
     if (sscanf(buffer, format, http_method, http_request_target) == 2) {
       printf("Request parsed => method : '%s' \t request-target : '%s' \n",
              http_method, http_request_target);
-      printf("request-target len : %lu \t request-target[0] : %c",
-             strlen(http_request_target), http_request_target[0]);
       if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
         log_send(accepted_socket, ok_message, strlen(ok_message), 0);
       } else {
-        log_send(accepted_socket, not_found_message, strlen(not_found_message),
-                 0);
+        const char *echo_str = "/echo/";
+        size_t echo_len = strlen(echo_str);
+        char message[64] = {0};
+        const char *message_fmt = "/echo/%s";
+
+        if (strncmp(http_request_target, echo_str, echo_len) == 0 &&
+            sscanf(http_request_target, message_fmt, message) == 1) {
+          char *response = generate_plain_response(message);
+          printf("Message to send: %s\n", response);
+          log_send(accepted_socket, response, strlen(response), 0);
+        } else {
+          log_send(accepted_socket, not_found_message,
+                   strlen(not_found_message), 0);
+        }
       }
     } else {
       log_send(accepted_socket, bad_request_message,
