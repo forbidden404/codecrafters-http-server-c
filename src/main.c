@@ -66,8 +66,8 @@ int main() {
   printf("Client connected\n");
 
   const char *ok_message = "HTTP/1.1 200 OK\r\n\r\n";
-  const char *bad_request_message = "HTTP/1.1 401 BAD REQUEST\r\n\r\n";
-  const char *not_found_message = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+  const char *bad_request_message = "HTTP/1.1 401 Bad Request\r\n\r\n";
+  const char *not_found_message = "HTTP/1.1 404 Not Found\r\n\r\n";
 
   char *buffer = malloc(1024 * sizeof(char));
   while (recv(accepted_socket, buffer, 1024, 0) != 0) {
