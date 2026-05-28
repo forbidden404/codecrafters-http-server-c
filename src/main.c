@@ -58,6 +58,12 @@ int main() {
          (socklen_t *)&client_addr_len);
   printf("Client connected\n");
 
+  // Send message
+  char *message = "HTTP/1.1 200 OK\r\n\r\n";
+  if (send(server_fd, message, strlen(message), 0) != 0) {
+    printf("Message sending failed: %s \n", strerror(errno));
+  }
+
   close(server_fd);
 
   return 0;
