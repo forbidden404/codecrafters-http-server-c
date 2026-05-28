@@ -79,7 +79,7 @@ int main() {
     int parsing_result =
         sscanf(buffer, format, http_method, http_request_target);
 
-    if (parsing_result != 2) {
+    if (sscanf(buffer, format, http_method, http_request_target) == 2) {
       printf("Request parsed => method : %s \t request-target : %s \n",
              http_method, http_request_target);
       if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
@@ -89,7 +89,6 @@ int main() {
                  0);
       }
     } else {
-      printf("Parsing result: %d \n", parsing_result);
       log_send(accepted_socket, bad_request_message,
                strlen(bad_request_message), 0);
     }
