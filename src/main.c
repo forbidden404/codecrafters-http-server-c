@@ -73,15 +73,14 @@ int main() {
   while (recv(accepted_socket, buffer, 1024, 0) != 0) {
     printf("Request received: %s \n", buffer);
     const char *format = "%s %s";
-    const char http_method[16] = {0};
-    const char http_request_target[64] = {0};
-
-    int parsing_result =
-        sscanf(buffer, format, http_method, http_request_target);
+    char http_method[16] = {0};
+    char http_request_target[64] = {0};
 
     if (sscanf(buffer, format, http_method, http_request_target) == 2) {
-      printf("Request parsed => method : %s \t request-target : %s \n",
+      printf("Request parsed => method : '%s' \t request-target : '%s' \n",
              http_method, http_request_target);
+      printf("request-target len : %lu \t request-target[0] : %c",
+             strlen(http_request_target), http_request_target[0]);
       if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
         log_send(accepted_socket, ok_message, strlen(ok_message), 0);
       } else {
