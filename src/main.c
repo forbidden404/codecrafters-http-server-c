@@ -151,41 +151,56 @@ int main() {
   printf("Waiting for a client to connect...\n");
   client_addr_len = sizeof(client_addr);
 
-  int accepted_socket = accept(server_fd, (struct sockaddr *)&client_addr,
-                               (socklen_t *)&client_addr_len);
-  printf("Client connected\n");
-
-  char *buffer = malloc(1024 * sizeof(char));
-  while (recv(accepted_socket, buffer, 1024, 0) != 0) {
-    printf("Request received: %s \n", buffer);
-    const char *format = "%s %s";
-    char http_method[16] = {0};
-    char http_request_target[64] = {0};
-
-    if (sscanf(buffer, format, http_method, http_request_target) == 2) {
-      printf("Request parsed => method : '%s' \t request-target : '%s' \n",
-             http_method, http_request_target);
-
-      int (*handlers[])(int, const char *, const char *,
-                        const char *) = {root, echo, user_agent};
-      size_t handlers_len = 3;
-      int index = 0;
-      int has_been_handled = 0;
-
-      for (; index < handlers_len && has_been_handled == 0; index++) {
-        has_been_handled = handlers[index](accepted_socket, buffer, http_method,
-                                           http_request_target);
-      }
-
-      if (!has_been_handled) {
-        log_send(accepted_socket, not_found_message, strlen(not_found_message),
-                 0);
-      }
-
-    } else {
-      log_send(accepted_socket, bad_request_message,
-               strlen(bad_request_message), 0);
+  int socket_fd = 0;
+  while (1) {
+    socket_fd = accept(server_fd, (struct sockaddr *)&client_addr,
+                       (socklen_t *)&client_addr_len);
+    if (socket_fd == -1) {
+      return 1;
     }
+    printf("Client connected\n");
+
+    if (!fork()) {
+      close(server_fd);
+
+      char *buffer = malloc(1024 * sizeof(char));
+      while (recv(socket_fd, buffer, 1024, 0) > 0) {
+        printf("Request received: %s \n", buffer);
+        const char *format = "%s %s";
+        char http_method[16] = {0};
+        char http_request_target[64] = {0};
+
+        if (sscanf(buffer, format, http_method, http_request_target) == 2) {
+          printf("Request parsed => method : '%s' \t request-target : '%s' \n",
+                 http_method, http_request_target);
+
+          int (*handlers[])(int, const char *, const char *,
+                            const char *) = {root, echo, user_agent};
+          size_t handlers_len = 3;
+          int index = 0;
+          int has_been_handled = 0;
+
+          for (; index < handlers_len && has_been_handled == 0; index++) {
+            has_been_handled = handlers[index](socket_fd, buffer, http_method,
+                                               http_request_target);
+          }
+
+          if (!has_been_handled) {
+            log_send(socket_fd, not_found_message, strlen(not_found_message),
+                     0);
+          }
+
+        } else {
+          log_send(socket_fd, bad_request_message, strlen(bad_request_message),
+                   0);
+        }
+      }
+
+      close(socket_fd);
+      exit(0);
+    }
+
+    close(socket_fd);
   }
 
   close(server_fd);
