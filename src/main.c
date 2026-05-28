@@ -7,6 +7,13 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+void log_send(int socket_fd, const void *buffer, size_t buffer_size,
+              int flags) {
+  if (send(socket_fd, buffer, buffer_size, flags) == -1) {
+    printf("Message sending failed: %d: %s \n", errno, strerror(errno));
+  }
+}
+
 int main() {
   // Disable output buffering
   setbuf(stdout, NULL);
@@ -58,11 +65,29 @@ int main() {
                                (socklen_t *)&client_addr_len);
   printf("Client connected\n");
 
-  // Send message
-  char *message = "HTTP/1.1 200 OK\r\n\r\n";
-  if (sendto(accepted_socket, message, strlen(message), 0,
-             (struct sockaddr *)&client_addr, client_addr_len) != 0) {
-    printf("Message sending failed: %s \n", strerror(errno));
+  const char *ok_message = "HTTP/1.1 200 OK\r\n\r\n";
+  const char *bad_request_message = "HTTP/1.1 401 BAD REQUEST\r\n\r\n";
+  const char *not_found_message = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+
+  char *buffer = malloc(1024 * sizeof(char));
+  while (recv(accepted_socket, buffer, 1024, 0) != 0) {
+    printf("Request received: %s \n", buffer);
+    const char *format = "%s %s %s\r\n";
+    const char http_method[16] = {0};
+    const char http_request_target[64] = {0};
+    if (sscanf(buffer, format, http_method, http_request_target) != 2) {
+      printf("Request parsed => method : %s \t request-target : %s \n",
+             http_method, http_request_target);
+      if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
+        log_send(accepted_socket, ok_message, strlen(ok_message), 0);
+      } else {
+        log_send(accepted_socket, not_found_message, strlen(not_found_message),
+                 0);
+      }
+    } else {
+      log_send(accepted_socket, bad_request_message,
+               strlen(bad_request_message), 0);
+    }
   }
 
   close(server_fd);
