@@ -72,10 +72,14 @@ int main() {
   char *buffer = malloc(1024 * sizeof(char));
   while (recv(accepted_socket, buffer, 1024, 0) != 0) {
     printf("Request received: %s \n", buffer);
-    const char *format = "%s %s %s\r\n";
+    const char *format = "%s %s";
     const char http_method[16] = {0};
     const char http_request_target[64] = {0};
-    if (sscanf(buffer, format, http_method, http_request_target) != 2) {
+
+    int parsing_result =
+        sscanf(buffer, format, http_method, http_request_target);
+
+    if (parsing_result != 2) {
       printf("Request parsed => method : %s \t request-target : %s \n",
              http_method, http_request_target);
       if (strlen(http_request_target) == 1 && http_request_target[0] == '/') {
@@ -85,6 +89,7 @@ int main() {
                  0);
       }
     } else {
+      printf("Parsing result: %d \n", parsing_result);
       log_send(accepted_socket, bad_request_message,
                strlen(bad_request_message), 0);
     }
