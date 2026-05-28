@@ -54,13 +54,13 @@ int main() {
   printf("Waiting for a client to connect...\n");
   client_addr_len = sizeof(client_addr);
 
-  accept(server_fd, (struct sockaddr *)&client_addr,
-         (socklen_t *)&client_addr_len);
+  int accepted_socket = accept(server_fd, (struct sockaddr *)&client_addr,
+                               (socklen_t *)&client_addr_len);
   printf("Client connected\n");
 
   // Send message
   char *message = "HTTP/1.1 200 OK\r\n\r\n";
-  if (sendto(server_fd, message, strlen(message), 0,
+  if (sendto(accepted_socket, message, strlen(message), 0,
              (struct sockaddr *)&client_addr, client_addr_len) != 0) {
     printf("Message sending failed: %s \n", strerror(errno));
   }
