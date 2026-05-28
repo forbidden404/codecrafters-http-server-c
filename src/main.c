@@ -60,7 +60,8 @@ int main() {
 
   // Send message
   char *message = "HTTP/1.1 200 OK\r\n\r\n";
-  if (send(server_fd, message, strlen(message), 0) != 0) {
+  if (sendto(server_fd, message, strlen(message), 0,
+             (struct sockaddr *)&client_addr, client_addr_len) != 0) {
     printf("Message sending failed: %s \n", strerror(errno));
   }
 
