@@ -7,111 +7,27 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-const char *ok_message = "HTTP/1.1 200 OK\r\n\r\n";
-const char *bad_request_message = "HTTP/1.1 401 Bad Request\r\n\r\n";
-const char *not_found_message = "HTTP/1.1 404 Not Found\r\n\r\n";
+#include "request.h"
+#include "response.h"
+#include "routes.h"
 
-void log_send(int socket_fd, const void *buffer, size_t buffer_size,
-              int flags) {
-  if (send(socket_fd, buffer, buffer_size, flags) == -1) {
+#define HTTP_BUFFER_SIZE 1024
+
+static void log_send(int socket_fd, const void *buffer, size_t buffer_size) {
+  if (send(socket_fd, buffer, buffer_size, 0) == -1) {
     printf("Message sending failed: %d: %s \n", errno, strerror(errno));
   }
 }
 
-char *generate_plain_response(const char *message) {
-  size_t message_len = strlen(message);
+int route_matches(const struct route *route, const char *path);
 
-  const char *status_line = "HTTP/1.1 200 OK\r\n";
-  size_t status_line_len = strlen(status_line);
-
-  const char *content_type = "Content-Type: text/plain\r\n";
-  size_t content_type_len = strlen(content_type);
-  char *content_length = calloc(64, sizeof(char));
-
-  snprintf(content_length, 64, "Content-Length: %lu\r\n\r\n", message_len);
-  size_t content_length_len = strlen(content_length);
-
-  size_t total_len =
-      message_len + status_line_len + content_type_len + content_length_len;
-  char *response = calloc(total_len, sizeof(char));
-
-  strncat(response, status_line, status_line_len);
-  strncat(response, content_type, content_type_len);
-  strncat(response, content_length, content_length_len);
-  strncat(response, message, message_len);
-
-  return response;
-}
-
-int root(int socket_fd, const char *buffer, const char *http_method,
-         const char *http_request_target) {
-  if (strncmp(http_request_target, "/", strlen(http_request_target)) != 0) {
-    return 0;
-  }
-
-  if (strncmp(http_method, "GET", 3) != 0) {
-    return 0;
-  }
-
-  log_send(socket_fd, ok_message, strlen(ok_message), 0);
-  return 1;
-}
-
-int echo(int socket_fd, const char *buffer, const char *http_method,
-         const char *http_request_target) {
-  const char *echo_str = "/echo/";
-  size_t echo_len = strlen(echo_str);
-  char message[64] = {0};
-  const char *message_fmt = "/echo/%s";
-
-  if (strncmp(http_request_target, echo_str, echo_len) != 0) {
-    return 0;
-  }
-
-  if (strncmp(http_method, "GET", 3) != 0) {
-    return 0;
-  }
-
-  if (sscanf(http_request_target, message_fmt, message) != 1) {
-    return 0;
-  }
-
-  char *response = generate_plain_response(message);
-  log_send(socket_fd, response, strlen(response), 0);
-
-  return 1;
-}
-
-int user_agent(int socket_fd, const char *buffer, const char *http_method,
-               const char *http_request_target) {
-  const char *user_agent_str = "/user-agent";
-  size_t user_agent_len = strlen(user_agent_str);
-
-  if (strncmp(http_request_target, user_agent_str, user_agent_len) != 0) {
-    return 0;
-  }
-
-  const char *header_fmt = "%*s %*s %*s\r\nHost: %*s\r\nUser-Agent: %s\r\n";
-  char user_agent_value[64] = {0};
-
-  if (sscanf(buffer, header_fmt, user_agent_value) != 1) {
-    return 0;
-  }
-
-  char *response = generate_plain_response(user_agent_value);
-  log_send(socket_fd, response, strlen(response), 0);
-
-  return 1;
-}
+void send_bad_request_message(int socket_fd);
+void send_not_found_message(int socket_fd);
 
 int main() {
   // Disable output buffering
   setbuf(stdout, NULL);
   setbuf(stderr, NULL);
-
-  // You can use print statements as follows for debugging, they'll be visible
-  // when running tests.
-  printf("Logs from your program will appear here!\n");
 
   int server_fd, client_addr_len;
   struct sockaddr_in client_addr;
@@ -142,13 +58,12 @@ int main() {
     return 1;
   }
 
-  int connection_backlog = 5;
+  const int connection_backlog = 5;
   if (listen(server_fd, connection_backlog) != 0) {
     printf("Listen failed: %s \n", strerror(errno));
     return 1;
   }
 
-  printf("Waiting for a client to connect...\n");
   client_addr_len = sizeof(client_addr);
 
   int socket_fd = 0;
@@ -156,44 +71,53 @@ int main() {
     socket_fd = accept(server_fd, (struct sockaddr *)&client_addr,
                        (socklen_t *)&client_addr_len);
     if (socket_fd == -1) {
+      printf("Accept failed: %s \n", strerror(errno));
       return 1;
     }
-    printf("Client connected\n");
 
     if (!fork()) {
       close(server_fd);
 
-      char *buffer = malloc(1024 * sizeof(char));
-      while (recv(socket_fd, buffer, 1024, 0) > 0) {
-        printf("Request received: %s \n", buffer);
-        const char *format = "%s %s";
-        char http_method[16] = {0};
-        char http_request_target[64] = {0};
-
-        if (sscanf(buffer, format, http_method, http_request_target) == 2) {
-          printf("Request parsed => method : '%s' \t request-target : '%s' \n",
-                 http_method, http_request_target);
-
-          int (*handlers[])(int, const char *, const char *,
-                            const char *) = {root, echo, user_agent};
-          size_t handlers_len = 3;
-          int index = 0;
-          int has_been_handled = 0;
-
-          for (; index < handlers_len && has_been_handled == 0; index++) {
-            has_been_handled = handlers[index](socket_fd, buffer, http_method,
-                                               http_request_target);
-          }
-
-          if (!has_been_handled) {
-            log_send(socket_fd, not_found_message, strlen(not_found_message),
-                     0);
-          }
-
-        } else {
-          log_send(socket_fd, bad_request_message, strlen(bad_request_message),
-                   0);
+      char *buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
+      while (recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0) {
+        struct http_request *request = http_request_from_buffer(buffer);
+        if (request == NULL) {
+          send_bad_request_message(socket_fd);
+          break;
         }
+
+        int index = 0;
+        for (; index < routes_len; index++) {
+          if (route_matches(&routes[index], request->request_target)) {
+            char *param = NULL;
+            if (routes[index].type == ROUTE_PARAM) {
+              size_t len = strlen(routes[index].path);
+              param = request->request_target + len;
+            }
+
+            struct http_response *response =
+                routes[index].handler(request, param);
+
+            if (response == NULL) {
+              continue;
+            }
+
+            char *response_buffer = http_response_to_buffer(response);
+
+            log_send(socket_fd, response_buffer, strlen(response_buffer));
+
+            http_response_destroy(response);
+            free(response_buffer);
+
+            break;
+          }
+        }
+
+        if (index == routes_len) {
+          send_not_found_message(socket_fd);
+        }
+
+        http_request_destroy(request);
       }
 
       close(socket_fd);
@@ -206,4 +130,37 @@ int main() {
   close(server_fd);
 
   return 0;
+}
+
+int route_matches(const struct route *route, const char *path) {
+  switch (route->type) {
+  case ROUTE_EXACT:
+    return strcmp(path, route->path) == 0;
+  case ROUTE_PARAM:
+    return strncmp(path, route->path, strlen(route->path)) == 0;
+  }
+
+  return 0;
+}
+
+void send_bad_request_message(int socket_fd) {
+  struct http_response *response =
+      create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
+  char *bad_request_message = http_response_to_buffer(response);
+
+  log_send(socket_fd, bad_request_message, strlen(bad_request_message));
+
+  http_response_destroy(response);
+  free(bad_request_message);
+}
+
+void send_not_found_message(int socket_fd) {
+  struct http_response *response =
+      create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
+  char *not_found_message = http_response_to_buffer(response);
+
+  log_send(socket_fd, not_found_message, strlen(not_found_message));
+
+  http_response_destroy(response);
+  free(not_found_message);
 }
