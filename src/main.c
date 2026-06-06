@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <getopt.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <stdio.h>
@@ -7,6 +8,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "bstrlib.h"
+#include "hashmap.h"
 #include "request.h"
 #include "response.h"
 #include "routes.h"
@@ -24,7 +27,25 @@ int route_matches(const struct route *route, const char *path);
 void send_bad_request_message(int socket_fd);
 void send_not_found_message(int socket_fd);
 
-int main() {
+int main(int argc, char *argv[]) {
+  int opt;
+  int opt_index = 0;
+  char *directory = NULL;
+
+  static struct option options[] = {{"directory", required_argument, 0, 0},
+                                    {0, 0, 0, 0}};
+
+  opt = getopt_long(argc, argv, "", options, &opt_index);
+
+  if (opt != -1) {
+    switch (opt) {
+    case 0:
+      if (optarg) {
+        directory = strdup(optarg);
+      }
+    }
+  }
+
   // Disable output buffering
   setbuf(stdout, NULL);
   setbuf(stderr, NULL);
@@ -89,14 +110,20 @@ int main() {
         int index = 0;
         for (; index < routes_len; index++) {
           if (route_matches(&routes[index], request->request_target)) {
-            char *param = NULL;
+            Hashmap *params = Hashmap_create(NULL, NULL);
             if (routes[index].type == ROUTE_PARAM) {
               size_t len = strlen(routes[index].path);
-              param = request->request_target + len;
+              bstring param = bfromcstr(request->request_target + len);
+              // TODO(fssn): Add pattern matching to param, using param for now
+              Hashmap_set(params, bfromcstr("param"), param);
+            }
+
+            if (directory) {
+              Hashmap_set(params, bfromcstr("directory"), bfromcstr(directory));
             }
 
             struct http_response *response =
-                routes[index].handler(request, param);
+                routes[index].handler(request, params);
 
             if (response == NULL) {
               continue;

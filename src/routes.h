@@ -3,11 +3,12 @@
 
 #include <stddef.h>
 
+#include "hashmap.h"
 #include "request.h"
 #include "response.h"
 
 typedef struct http_response *(*route_handler)(
-    const struct http_request *request, const char *param);
+    const struct http_request *request, Hashmap *params);
 
 enum route_type { ROUTE_EXACT, ROUTE_PARAM };
 
@@ -17,17 +18,21 @@ struct route {
   route_handler handler;
 };
 
-struct http_response *route_root(const struct http_request *request,
-                                 const char *param);
-struct http_response *route_echo(const struct http_request *request,
-                                 const char *param);
-struct http_response *route_user_agent(const struct http_request *request,
-                                       const char *param);
+#define route(ROUTE)                                                           \
+  struct http_response *route_##ROUTE(const struct http_request *request,      \
+                                      Hashmap *params)
 
+#define route_name(ROUTE) route_##ROUTE
+
+route(root);
+route(echo);
+route(user_agent);
+route(files);
 static struct route routes[] = {
-    {ROUTE_EXACT, "/", route_root},
-    {ROUTE_PARAM, "/echo/", route_echo},
-    {ROUTE_EXACT, "/user-agent", route_user_agent},
+    {ROUTE_EXACT, "/", route_name(root)},
+    {ROUTE_PARAM, "/echo/", route_name(echo)},
+    {ROUTE_EXACT, "/user-agent", route_name(user_agent)},
+    {ROUTE_PARAM, "/files/", route_name(files)},
 };
 extern const size_t routes_len;
 
