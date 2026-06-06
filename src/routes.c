@@ -70,6 +70,8 @@ struct http_response *get_files(const struct http_request *request,
     fread(buffer, 1, length, file);
   }
 
+  fclose(file);
+
   const char *content_type = "Content-Type: application/octet-stream\r\n";
   size_t content_type_len = strlen(content_type);
   char *content_length = calloc(MESSAGE_SIZE, sizeof(char));
@@ -114,6 +116,8 @@ struct http_response *post_files(const struct http_request *request,
   }
 
   fwrite((char *)request->data, content_length, 1, file);
+
+  fclose(file);
 
   return create_empty_http_1_1_message(HTTP_CREATED, "Created");
 }
