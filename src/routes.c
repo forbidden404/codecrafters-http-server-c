@@ -53,11 +53,10 @@ struct http_response *route_files(const struct http_request *request,
     return NULL;
   }
 
-  char *path = strcat(bstr2cstr(directory, 0), bstr2cstr(filename, 0));
-  printf("Path: %s\n", path);
+  bconcat(directory, filename);
+  char *path = bstr2cstr(directory, 0);
 
   FILE *file = fopen(path, "r");
-  printf("File: %p\n", file);
 
   // Check if file exists
   if (file == NULL) {
@@ -67,7 +66,6 @@ struct http_response *route_files(const struct http_request *request,
   fseek(file, 0, SEEK_END);
 
   long length = ftell(file);
-  printf("Length: %ld\n", length);
 
   fseek(file, 0, SEEK_SET);
 
