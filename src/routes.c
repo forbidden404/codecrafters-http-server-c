@@ -70,7 +70,7 @@ struct http_response *route_files(const struct http_request *request,
 
   fseek(file, 0, SEEK_SET);
 
-  char *buffer = malloc(length);
+  char *buffer = calloc(length + 1, sizeof(char));
   if (buffer) {
     fread(buffer, 1, length, file);
   }
