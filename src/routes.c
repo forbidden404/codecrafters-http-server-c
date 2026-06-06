@@ -98,7 +98,7 @@ struct http_response *post_files(const struct http_request *request,
   long content_length;
 
   if (directory == NULL || filename == NULL ||
-      parse_long(bdata((bstring)content_length_str), &content_length)) {
+      parse_long(bdata((bstring)content_length_str), &content_length) != 0) {
     return create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
   }
 
