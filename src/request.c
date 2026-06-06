@@ -106,7 +106,7 @@ struct http_request *http_request_from_buffer(const char *buffer) {
   if (content_length_str != NULL &&
       parse_long(content_length_str, &content_length) == 0) {
     request->data = calloc(content_length + 1, sizeof(char));
-    memcpy(request->data, strtok(body, "\0"), content_length);
+    memcpy(request->data, strtok(body + 2, "\0"), content_length);
   }
 
   return request;

@@ -117,7 +117,7 @@ struct http_response *post_files(const struct http_request *request,
 
   printf("Content: %s\n", (char *)request->data);
 
-  fwrite((char *)(request->data + 2), content_length, 1, file);
+  fwrite((char *)request->data, content_length, 1, file);
 
   fclose(file);
 
