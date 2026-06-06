@@ -57,6 +57,7 @@ struct http_response *route_files(const struct http_request *request,
   printf("Path: %s\n", path);
 
   FILE *file = fopen(path, "r");
+  printf("File: %p\n", file);
 
   // Check if file exists
   if (file == NULL) {
