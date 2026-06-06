@@ -15,5 +15,6 @@ struct http_request {
 
 struct http_request *http_request_from_buffer(const char *buffer);
 void http_request_destroy(struct http_request *request);
+int parse_long(const char *str, long *out);
 
 #endif /* REQUEST_H */

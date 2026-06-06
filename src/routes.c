@@ -41,16 +41,12 @@ struct http_response *route_user_agent(const struct http_request *request,
   return create_plain_message(bstr2cstr(result, 0));
 }
 
-struct http_response *route_files(const struct http_request *request,
-                                  Hashmap *params) {
-  if (params == NULL) {
-    return NULL;
-  }
-
+struct http_response *get_files(const struct http_request *request,
+                                Hashmap *params) {
   bstring directory = Hashmap_get(params, bfromcstr("directory"));
   bstring filename = Hashmap_get(params, bfromcstr("param"));
   if (directory == NULL || filename == NULL) {
-    return NULL;
+    return create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
   }
 
   bconcat(directory, filename);
@@ -91,4 +87,48 @@ struct http_response *route_files(const struct http_request *request,
   ptr += sprintf(ptr, "%s", buffer);
 
   return create_http_1_1_message(HTTP_OK, "OK", message);
+}
+
+struct http_response *post_files(const struct http_request *request,
+                                 Hashmap *params) {
+  bstring directory = Hashmap_get(params, bfromcstr("directory"));
+  bstring filename = Hashmap_get(params, bfromcstr("param"));
+  bstring content_length_str =
+      Hashmap_get(request->headers, bfromcstr("Content-Length"));
+  long content_length;
+
+  if (directory == NULL || filename == NULL ||
+      parse_long(bdata((bstring)content_length_str), &content_length)) {
+    return create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
+  }
+
+  bconcat(directory, filename);
+  char *path = bstr2cstr(directory, 0);
+
+  FILE *file = fopen(path, "w");
+
+  // Check if file exists
+  if (file == NULL) {
+    // Should probably be a 500
+    return create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
+  }
+
+  fwrite((char *)request->data, content_length, 1, file);
+
+  return create_empty_http_1_1_message(HTTP_CREATED, "Created");
+}
+
+struct http_response *route_files(const struct http_request *request,
+                                  Hashmap *params) {
+  if (params == NULL) {
+    return NULL;
+  }
+
+  if (strcmp(request->method, "GET") == 0) {
+    return get_files(request, params);
+  } else if (strcmp(request->method, "POST") == 0) {
+    return post_files(request, params);
+  }
+
+  return NULL;
 }
