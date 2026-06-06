@@ -115,7 +115,9 @@ struct http_response *post_files(const struct http_request *request,
     return create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
   }
 
-  fwrite((char *)(request->data + 2), content_length + 1, 1, file);
+  printf("Content: %s\n", (char *)request->data);
+
+  fwrite((char *)(request->data + 2), content_length, 1, file);
 
   fclose(file);
 
