@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "bstrlib.h"
 #include "hashmap.h"
@@ -18,6 +19,40 @@
 
 #define BUFFER_SIZE 1024
 #define MESSAGE_SIZE 512
+
+int gzip_compress(const char *input, size_t input_len, unsigned char **output,
+                  size_t *output_len) {
+  z_stream zs = {0};
+
+  if (deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                   15 + 16, /* gzip header */
+                   8, Z_DEFAULT_STRATEGY) != Z_OK) {
+    return -1;
+  }
+
+  size_t buffer_size = compressBound(input_len);
+  *output = malloc(buffer_size);
+
+  zs.next_in = (Bytef *)input;
+  zs.avail_in = input_len;
+
+  zs.next_out = *output;
+  zs.avail_out = buffer_size;
+
+  int ret = deflate(&zs, Z_FINISH);
+
+  if (ret != Z_STREAM_END) {
+    free(*output);
+    deflateEnd(&zs);
+    return -1;
+  }
+
+  *output_len = zs.total_out;
+
+  deflateEnd(&zs);
+
+  return 0;
+}
 
 struct http_response {
   char *http_version;
@@ -65,31 +100,45 @@ struct http_response *create_plain_message(const char *message,
   Hashmap_set(headers, bfromcstr("Content-Type"), bfromcstr("text/plain"));
   char *content_length = calloc(MESSAGE_SIZE, sizeof(char));
 
-  snprintf(content_length, MESSAGE_SIZE, "%lu", strlen(message));
-  Hashmap_set(headers, bfromcstr("Content-Length"), bfromcstr(content_length));
-  free(content_length);
-
+  int is_encoding = 0;
   if (request_headers) {
     bstring accept_encoding =
         Hashmap_get(request_headers, bfromcstr("Accept-Encoding"));
     if (accept_encoding) {
       char *accept_encoding_str = bdata((bstring)accept_encoding);
-      printf("Accept Encoding Str: %s\n", accept_encoding_str);
       char *encoding = strtok(accept_encoding_str, " ,\0");
 
       while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
-        printf("Encoding: %s\n", encoding);
         encoding = strtok(NULL, " ,\0");
       }
 
       if (encoding && strcmp(encoding, "gzip") == 0) {
+        is_encoding = 1;
         Hashmap_set(headers, bfromcstr("Content-Encoding"), bfromcstr("gzip"));
       }
     }
   }
 
+  if (is_encoding) {
+    unsigned char *compressed;
+    size_t compressed_len;
+
+    if (gzip_compress(message, strlen(message), &compressed, &compressed_len)) {
+      snprintf(content_length, MESSAGE_SIZE, "%lu", compressed_len);
+      Hashmap_set(headers, bfromcstr("Content-Length"),
+                  bfromcstr(content_length));
+      free(content_length);
+      http_response_builder_option(builder, BODY, compressed);
+    }
+  } else {
+    snprintf(content_length, MESSAGE_SIZE, "%lu", strlen(message));
+    Hashmap_set(headers, bfromcstr("Content-Length"),
+                bfromcstr(content_length));
+    free(content_length);
+    http_response_builder_option(builder, BODY, message);
+  }
+
   http_response_builder_option(builder, HEADERS, headers);
-  http_response_builder_option(builder, BODY, message);
   return http_response_builder_construct(builder);
 }
 
