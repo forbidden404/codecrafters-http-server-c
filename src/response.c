@@ -161,20 +161,23 @@ void http_response_builder_option(struct http_response_builder *builder,
     break;
   case COMPRESSION_GZIP:
     if (builder->data && builder->headers) {
+      bstring content_length_key = bfromcstr("Content-Length");
       bstring content_length_str =
-          Hashmap_get(builder->headers, bfromcstr("Content-Length"));
+          Hashmap_get(builder->headers, content_length_key);
       if (content_length_str) {
         parse_long(bdata((bstring)content_length_str), &content_length);
 
         unsigned char *output;
-        size_t output_len;
+        size_t output_len = 0;
 
-        gzip_compress((char *)builder->data, content_length, &output,
-                      &output_len);
+        if (gzip_compress((char *)builder->data, content_length, &output,
+                          &output_len) != 0) {
+        }
 
         char *output_len_str = calloc(BUFFER_SIZE, sizeof(char));
         snprintf(output_len_str, BUFFER_SIZE, "%lu", output_len);
-        Hashmap_set(builder->headers, bfromcstr("Content-Length"),
+        Hashmap_delete(builder->headers, content_length_key);
+        Hashmap_set(builder->headers, content_length_key,
                     bfromcstr(output_len_str));
 
         Hashmap_set(builder->headers, bfromcstr("Content-Encoding"),

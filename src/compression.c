@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <zlib.h>
 
@@ -13,16 +14,27 @@ int gzip_compress(const char *input, size_t input_len, unsigned char **output,
     return -1;
   }
 
-  size_t buffer_size = compressBound(input_len);
-  *output = malloc(buffer_size);
-
   zs.next_in = (Bytef *)input;
   zs.avail_in = input_len;
 
-  zs.next_out = *output;
-  zs.avail_out = buffer_size;
+  int ret;
 
-  int ret = deflate(&zs, Z_FINISH);
+  size_t capacity = 1024;
+  *output = malloc(capacity);
+
+  zs.next_out = *output;
+  zs.avail_out = capacity;
+
+  while ((ret = deflate(&zs, Z_FINISH)) == Z_OK) {
+    size_t used = zs.total_out;
+
+    capacity *= 2;
+
+    *output = realloc(*output, capacity);
+
+    zs.next_out = *output + used;
+    zs.avail_out = capacity - used;
+  }
 
   if (ret != Z_STREAM_END) {
     free(*output);
