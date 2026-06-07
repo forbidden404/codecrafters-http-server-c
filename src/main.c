@@ -145,6 +145,13 @@ int main(int argc, char *argv[]) {
         }
 
         http_request_destroy(request);
+
+        free(buffer);
+        buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
+      }
+
+      if (buffer) {
+        free(buffer);
       }
 
       close(socket_fd);
