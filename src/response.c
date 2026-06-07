@@ -75,11 +75,11 @@ struct http_response *create_plain_message(const char *message,
     if (accept_encoding) {
       char *accept_encoding_str = bdata((bstring)accept_encoding);
       printf("Accept Encoding Str: %s\n", accept_encoding_str);
-      char *encoding = strtok(accept_encoding_str, ",\0");
+      char *encoding = strtok(accept_encoding_str, " ,\0");
 
       while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
         printf("Encoding: %s\n", encoding);
-        encoding = strtok(NULL, ",\0");
+        encoding = strtok(NULL, " ,\0");
       }
 
       if (encoding && strcmp(encoding, "gzip") == 0) {
