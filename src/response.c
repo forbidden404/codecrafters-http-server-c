@@ -72,7 +72,14 @@ struct http_response *create_plain_message(const char *message,
   if (request_headers) {
     bstring accept_encoding =
         Hashmap_get(request_headers, bfromcstr("Accept-Encoding"));
-    if (accept_encoding && bstrcmp(accept_encoding, bfromcstr("gzip")) == 0) {
+    char *accept_encoding_str = bdata((bstring)accept_encoding);
+    char *encoding = strtok(accept_encoding_str, ",\0");
+
+    while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
+      encoding = strtok(NULL, ",\0");
+    }
+
+    if (encoding && strcmp(encoding, "gzip") == 0) {
       Hashmap_set(headers, bfromcstr("Content-Encoding"), bfromcstr("gzip"));
     }
   }
