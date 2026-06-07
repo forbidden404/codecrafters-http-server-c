@@ -128,6 +128,7 @@ struct http_response *create_plain_message(const char *message,
       Hashmap_set(headers, bfromcstr("Content-Length"),
                   bfromcstr(content_length));
       free(content_length);
+      http_response_builder_option(builder, HEADERS, headers);
       http_response_builder_option(builder, BODY, compressed);
     }
   } else {
@@ -135,10 +136,10 @@ struct http_response *create_plain_message(const char *message,
     Hashmap_set(headers, bfromcstr("Content-Length"),
                 bfromcstr(content_length));
     free(content_length);
+    http_response_builder_option(builder, HEADERS, headers);
     http_response_builder_option(builder, BODY, message);
   }
 
-  http_response_builder_option(builder, HEADERS, headers);
   return http_response_builder_construct(builder);
 }
 
@@ -200,7 +201,11 @@ void http_response_builder_option(struct http_response_builder *builder,
     builder->headers = NULL;
     break;
   case BODY:
-    builder->data = strdup(va_arg(args, char *));
+    long content_length;
+    parse_long(bdata((bstring)Hashmap_get(builder->headers,
+                                          bfromcstr("Content-Length"))),
+               &content_length);
+    memcpy(builder->data, va_arg(args, void *), content_length);
     break;
   case -BODY:
     builder->data = NULL;
