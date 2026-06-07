@@ -171,8 +171,9 @@ int route_matches(const struct route *route, const char *path) {
 }
 
 void send_bad_request_message(int socket_fd) {
-  struct http_response *response =
-      create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
+  struct http_response_builder *builder =
+      create_http_response_builder(HTTP_BAD_REQUEST);
+  struct http_response *response = http_response_builder_construct(builder);
   char *bad_request_message = http_response_to_buffer(response);
 
   log_send(socket_fd, bad_request_message, strlen(bad_request_message));
@@ -182,8 +183,9 @@ void send_bad_request_message(int socket_fd) {
 }
 
 void send_not_found_message(int socket_fd) {
-  struct http_response *response =
-      create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
+  struct http_response_builder *builder =
+      create_http_response_builder(HTTP_NOT_FOUND);
+  struct http_response *response = http_response_builder_construct(builder);
   char *not_found_message = http_response_to_buffer(response);
 
   log_send(socket_fd, not_found_message, strlen(not_found_message));

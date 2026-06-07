@@ -22,13 +22,17 @@ struct http_response *route_root(const struct http_request *request,
     return NULL;
   }
 
-  return create_empty_http_1_1_message(HTTP_OK, "OK");
+  struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
+  struct http_response *response = http_response_builder_construct(builder);
+  destroy_http_response_builder(builder);
+
+  return response;
 }
 
 struct http_response *route_echo(const struct http_request *request,
                                  Hashmap *params) {
   bstring result = Hashmap_get(params, bfromcstr("param"));
-  return create_plain_message(bdata((bstring)result));
+  return create_plain_message(bdata((bstring)result), request->headers);
 }
 
 struct http_response *route_user_agent(const struct http_request *request,
@@ -38,7 +42,7 @@ struct http_response *route_user_agent(const struct http_request *request,
     return NULL;
   }
 
-  return create_plain_message(bstr2cstr(result, 0));
+  return create_plain_message(bstr2cstr(result, 0), request->headers);
 }
 
 struct http_response *get_files(const struct http_request *request,
@@ -46,7 +50,11 @@ struct http_response *get_files(const struct http_request *request,
   bstring directory = Hashmap_get(params, bfromcstr("directory"));
   bstring filename = Hashmap_get(params, bfromcstr("param"));
   if (directory == NULL || filename == NULL) {
-    return create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
+    struct http_response_builder *builder =
+        create_http_response_builder(HTTP_BAD_REQUEST);
+    struct http_response *response = http_response_builder_construct(builder);
+    destroy_http_response_builder(builder);
+    return response;
   }
 
   bconcat(directory, filename);
@@ -56,7 +64,11 @@ struct http_response *get_files(const struct http_request *request,
 
   // Check if file exists
   if (file == NULL) {
-    return create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
+    struct http_response_builder *builder =
+        create_http_response_builder(HTTP_NOT_FOUND);
+    struct http_response *response = http_response_builder_construct(builder);
+    destroy_http_response_builder(builder);
+    return response;
   }
 
   fseek(file, 0, SEEK_END);
@@ -72,23 +84,21 @@ struct http_response *get_files(const struct http_request *request,
 
   fclose(file);
 
-  const char *content_type = "Content-Type: application/octet-stream\r\n";
-  size_t content_type_len = strlen(content_type);
+  struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
+
+  Hashmap *headers = Hashmap_create(NULL, NULL);
+  Hashmap_set(headers, bfromcstr("Content-Type"),
+              bfromcstr("application/octet-stream"));
   char *content_length = calloc(MESSAGE_SIZE, sizeof(char));
+  snprintf(content_length, MESSAGE_SIZE, "%lu", length);
+  Hashmap_set(headers, bfromcstr("Content-Length"), bfromcstr(content_length));
 
-  snprintf(content_length, MESSAGE_SIZE, "Content-Length: %lu\r\n\r\n", length);
-  size_t content_length_len = strlen(content_length);
+  http_response_builder_option(builder, HEADERS, headers);
+  http_response_builder_option(builder, BODY, buffer);
 
-  size_t total_len = length + content_type_len + content_length_len;
-  char *message = calloc(total_len, sizeof(char));
-
-  char *ptr = message;
-
-  ptr += sprintf(ptr, "%s", content_type);
-  ptr += sprintf(ptr, "%s", content_length);
-  ptr += sprintf(ptr, "%s", buffer);
-
-  return create_http_1_1_message(HTTP_OK, "OK", message);
+  struct http_response *response = http_response_builder_construct(builder);
+  destroy_http_response_builder(builder);
+  return response;
 }
 
 struct http_response *post_files(const struct http_request *request,
@@ -101,7 +111,11 @@ struct http_response *post_files(const struct http_request *request,
 
   if (directory == NULL || filename == NULL ||
       parse_long(bdata((bstring)content_length_str), &content_length) != 0) {
-    return create_empty_http_1_1_message(HTTP_BAD_REQUEST, "Bad Request");
+    struct http_response_builder *builder =
+        create_http_response_builder(HTTP_BAD_REQUEST);
+    struct http_response *response = http_response_builder_construct(builder);
+    destroy_http_response_builder(builder);
+    return response;
   }
 
   bconcat(directory, filename);
@@ -111,17 +125,22 @@ struct http_response *post_files(const struct http_request *request,
 
   // Check if file exists
   if (file == NULL) {
-    // Should probably be a 500
-    return create_empty_http_1_1_message(HTTP_NOT_FOUND, "Not Found");
+    struct http_response_builder *builder =
+        create_http_response_builder(HTTP_INTERNAL_SERVER_ERROR);
+    struct http_response *response = http_response_builder_construct(builder);
+    destroy_http_response_builder(builder);
+    return response;
   }
-
-  printf("Content: %s\n", (char *)request->data);
 
   fwrite((char *)request->data, content_length, 1, file);
 
   fclose(file);
 
-  return create_empty_http_1_1_message(HTTP_CREATED, "Created");
+  struct http_response_builder *builder =
+      create_http_response_builder(HTTP_CREATED);
+  struct http_response *response = http_response_builder_construct(builder);
+  destroy_http_response_builder(builder);
+  return response;
 }
 
 struct http_response *route_files(const struct http_request *request,
