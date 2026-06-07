@@ -70,9 +70,9 @@ struct http_response *create_plain_message(const char *message,
   free(content_length);
 
   if (request_headers) {
-    char *accept_encoding = bdata(
-        (bstring)Hashmap_get(request_headers, bfromcstr("Accept-Encoding")));
-    if (strcmp(accept_encoding, "gzip") == 0) {
+    bstring accept_encoding =
+        Hashmap_get(request_headers, bfromcstr("Accept-Encoding"));
+    if (accept_encoding && bstrcmp(accept_encoding, bfromcstr("gzip")) == 0) {
       Hashmap_set(headers, bfromcstr("Content-Encoding"), bfromcstr("gzip"));
     }
   }
