@@ -206,7 +206,9 @@ void http_response_builder_option(struct http_response_builder *builder,
                                           bfromcstr("Content-Length"))),
                &content_length);
     printf("%ld\n", content_length);
-    memcpy(builder->data, va_arg(args, unsigned char *), content_length);
+    unsigned char *ptr = va_arg(args, unsigned char *);
+    printf("Builder data ptr: %p\n", ptr);
+    memcpy(builder->data, ptr, content_length);
     printf("Builder data: ");
     for (int i = 0; i < content_length; i++) {
       printf("%02X ", builder->data[i]);
