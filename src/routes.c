@@ -32,7 +32,28 @@ struct http_response *route_root(const struct http_request *request,
 struct http_response *route_echo(const struct http_request *request,
                                  Hashmap *params) {
   bstring result = Hashmap_get(params, bfromcstr("param"));
-  return create_plain_message(bdata((bstring)result), request->headers);
+  struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
+  http_response_builder_plain_message(builder, bdata((bstring)result));
+
+  bstring accept_encoding =
+      Hashmap_get(request->headers, bfromcstr("Accept-Encoding"));
+  if (accept_encoding) {
+    char *accept_encoding_str = bdata((bstring)accept_encoding);
+    char *encoding = strtok(accept_encoding_str, " ,\0");
+
+    while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
+      encoding = strtok(NULL, " ,\0");
+    }
+
+    if (encoding && strcmp(encoding, "gzip") == 0) {
+      http_response_builder_option(builder, COMPRESSION_GZIP);
+    }
+  }
+
+  struct http_response *response = http_response_builder_construct(builder);
+  destroy_http_response_builder(builder);
+
+  return response;
 }
 
 struct http_response *route_user_agent(const struct http_request *request,
@@ -42,7 +63,12 @@ struct http_response *route_user_agent(const struct http_request *request,
     return NULL;
   }
 
-  return create_plain_message(bstr2cstr(result, 0), request->headers);
+  struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
+  http_response_builder_plain_message(builder, bdata((bstring)result));
+  struct http_response *response = http_response_builder_construct(builder);
+  destroy_http_response_builder(builder);
+
+  return response;
 }
 
 struct http_response *get_files(const struct http_request *request,

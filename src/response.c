@@ -1,18 +1,11 @@
-// Response
-// status-line    = HTTP-version SP status-code SP [ reason-phrase ]
-// status-code    = 3DIGIT
-// reason-phrase  = 1*( HTAB / SP / VCHAR / obs-text )
-//
-// field-line     = field-name ":" OWS field-value OWS
-
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <zlib.h>
 
 #include "bstrlib.h"
+#include "compression.h"
 #include "hashmap.h"
 #include "request.h"
 #include "response.h"
@@ -20,58 +13,67 @@
 #define BUFFER_SIZE 1024
 #define MESSAGE_SIZE 512
 
-int gzip_compress(const char *input, size_t input_len, unsigned char **output,
-                  size_t *output_len) {
-  z_stream zs = {0};
-
-  if (deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
-                   15 + 16, /* gzip header */
-                   8, Z_DEFAULT_STRATEGY) != Z_OK) {
-    return -1;
-  }
-
-  size_t buffer_size = compressBound(input_len);
-  *output = malloc(buffer_size);
-
-  zs.next_in = (Bytef *)input;
-  zs.avail_in = input_len;
-
-  zs.next_out = *output;
-  zs.avail_out = buffer_size;
-
-  int ret = deflate(&zs, Z_FINISH);
-
-  if (ret != Z_STREAM_END) {
-    free(*output);
-    deflateEnd(&zs);
-    return -1;
-  }
-
-  *output_len = zs.total_out;
-
-  deflateEnd(&zs);
-
-  return 0;
-}
-
 struct http_response {
   char *http_version;
   enum http_status status;
   char *reason_phrase;
 
-  char *field_line;
+  unsigned char *field_line;
+  size_t field_line_len;
+
+  size_t total_size;
 };
 
-char *http_response_to_buffer(const struct http_response *response) {
+size_t http_response_size(const struct http_response *response) {
+  return response->total_size;
+}
+
+unsigned char *http_response_to_buffer(const struct http_response *response) {
   if (response == NULL) {
     return NULL;
   }
 
-  char *buffer = calloc(BUFFER_SIZE, sizeof(char));
-  sprintf(buffer, "%s %d %s\r\n%s\r\n", response->http_version,
-          response->status,
-          response->reason_phrase == NULL ? "" : response->reason_phrase,
-          response->field_line == NULL ? "" : response->field_line);
+  unsigned char *buffer = calloc(response->total_size, sizeof(*buffer));
+
+  size_t http_version_len = strlen(response->http_version);
+
+  int offset = 0;
+  for (; offset < http_version_len; offset++) {
+    buffer[offset] = response->http_version[offset];
+  }
+
+  buffer[offset++] = ' ';
+
+  size_t status_code_len = 4;
+  char *status_code_str = calloc(status_code_len, sizeof(char));
+  snprintf(status_code_str, status_code_len, "%d", response->status);
+
+  status_code_len += offset - 1;
+  for (int i = 0; offset < status_code_len; offset++, i++) {
+    buffer[offset] = status_code_str[i];
+  }
+
+  buffer[offset++] = ' ';
+
+  size_t reason_phrase_len = 0;
+  if (response->reason_phrase) {
+    reason_phrase_len = strlen(response->reason_phrase);
+  }
+  reason_phrase_len += offset;
+  for (int i = 0; offset < reason_phrase_len; offset++, i++) {
+    buffer[offset] = response->reason_phrase[i];
+  }
+
+  buffer[offset++] = '\r';
+  buffer[offset++] = '\n';
+
+  size_t field_line_len = offset + response->field_line_len;
+  for (int i = 0; offset < field_line_len; offset++, i++) {
+    buffer[offset] = response->field_line[i];
+  }
+
+  buffer[offset++] = '\r';
+  buffer[offset++] = '\n';
 
   return buffer;
 }
@@ -92,64 +94,13 @@ void http_response_destroy(struct http_response *request) {
   free(request);
 }
 
-struct http_response *create_plain_message(const char *message,
-                                           Hashmap *request_headers) {
-  struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
-
-  Hashmap *headers = Hashmap_create(NULL, NULL);
-  Hashmap_set(headers, bfromcstr("Content-Type"), bfromcstr("text/plain"));
-  char *content_length = calloc(MESSAGE_SIZE, sizeof(char));
-
-  int is_encoding = 0;
-  if (request_headers) {
-    bstring accept_encoding =
-        Hashmap_get(request_headers, bfromcstr("Accept-Encoding"));
-    if (accept_encoding) {
-      char *accept_encoding_str = bdata((bstring)accept_encoding);
-      char *encoding = strtok(accept_encoding_str, " ,\0");
-
-      while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
-        encoding = strtok(NULL, " ,\0");
-      }
-
-      if (encoding && strcmp(encoding, "gzip") == 0) {
-        is_encoding = 1;
-        Hashmap_set(headers, bfromcstr("Content-Encoding"), bfromcstr("gzip"));
-      }
-    }
-  }
-
-  if (is_encoding) {
-    unsigned char *compressed;
-    size_t compressed_len;
-
-    if (gzip_compress(message, strlen(message), &compressed, &compressed_len)) {
-      snprintf(content_length, MESSAGE_SIZE, "%lu", compressed_len);
-      Hashmap_set(headers, bfromcstr("Content-Length"),
-                  bfromcstr(content_length));
-      free(content_length);
-      http_response_builder_option(builder, HEADERS, headers);
-      http_response_builder_option(builder, BODY, compressed);
-    }
-  } else {
-    snprintf(content_length, MESSAGE_SIZE, "%lu", strlen(message));
-    Hashmap_set(headers, bfromcstr("Content-Length"),
-                bfromcstr(content_length));
-    free(content_length);
-    http_response_builder_option(builder, HEADERS, headers);
-    http_response_builder_option(builder, BODY, message);
-  }
-
-  return http_response_builder_construct(builder);
-}
-
 struct http_response_builder {
   char *http_version;
   enum http_status status_code;
 
   Hashmap *headers;
 
-  char *data;
+  unsigned char *data;
 };
 
 struct http_response_builder *
@@ -186,6 +137,8 @@ void http_response_builder_option(struct http_response_builder *builder,
                                   int option, ...) {
   va_list args;
 
+  long content_length = 0;
+
   va_start(args, option);
   switch (option) {
   case HTTP_VERSION:
@@ -201,24 +154,52 @@ void http_response_builder_option(struct http_response_builder *builder,
     builder->headers = NULL;
     break;
   case BODY:
-    long content_length = 0;
-    parse_long(bdata((bstring)Hashmap_get(builder->headers,
-                                          bfromcstr("Content-Length"))),
-               &content_length);
-    unsigned char *ptr = va_arg(args, unsigned char *);
-    for (int i = 0; i < content_length; i++) {
-      printf("%02X ", ptr[i]);
-    }
-    memcpy(builder->data, ptr, content_length);
-
-    printf("\n");
+    builder->data = (unsigned char *)strdup(va_arg(args, char *));
     break;
   case -BODY:
     builder->data = NULL;
     break;
+  case COMPRESSION_GZIP:
+    if (builder->data && builder->headers) {
+      bstring content_length_str =
+          Hashmap_get(builder->headers, bfromcstr("Content-Length"));
+      if (content_length_str) {
+        parse_long(bdata((bstring)content_length_str), &content_length);
+
+        unsigned char *output;
+        size_t output_len;
+
+        gzip_compress((char *)builder->data, content_length, &output,
+                      &output_len);
+
+        char *output_len_str = calloc(BUFFER_SIZE, sizeof(char));
+        snprintf(output_len_str, BUFFER_SIZE, "%lu", output_len);
+        Hashmap_set(builder->headers, bfromcstr("Content-Length"),
+                    bfromcstr(output_len_str));
+
+        Hashmap_set(builder->headers, bfromcstr("Content-Encoding"),
+                    bfromcstr("gzip"));
+
+        memcpy(builder->data, output, output_len);
+      }
+    }
+    break;
   }
 
   va_end(args);
+}
+
+void http_response_builder_plain_message(struct http_response_builder *builder,
+                                         const char *message) {
+  Hashmap *headers = Hashmap_create(NULL, NULL);
+  Hashmap_set(headers, bfromcstr("Content-Type"), bfromcstr("text/plain"));
+  char *content_length = calloc(MESSAGE_SIZE, sizeof(char));
+
+  snprintf(content_length, MESSAGE_SIZE, "%lu", strlen(message));
+  Hashmap_set(headers, bfromcstr("Content-Length"), bfromcstr(content_length));
+  free(content_length);
+  http_response_builder_option(builder, HEADERS, headers);
+  http_response_builder_option(builder, BODY, message);
 }
 
 char *map_to_buffer = NULL;
@@ -261,7 +242,9 @@ http_response_builder_construct(struct http_response_builder *builder) {
   struct http_response *response = calloc(1, sizeof(*response));
 
   response->http_version = strdup(builder->http_version);
+  response->total_size = strlen(builder->http_version) + 1;
   response->status = builder->status_code;
+  response->total_size += 4;
 
   switch (builder->status_code) {
   case HTTP_OK:
@@ -280,6 +263,7 @@ http_response_builder_construct(struct http_response_builder *builder) {
     response->reason_phrase = strdup("Internal Server Error");
     break;
   }
+  response->total_size += strlen(response->reason_phrase) + 2;
 
   if (builder->headers) {
     map_to_buffer_size = 0;
@@ -294,25 +278,35 @@ http_response_builder_construct(struct http_response_builder *builder) {
     map_to_buffer = realloc(map_to_buffer, map_to_buffer_size);
     strncat(map_to_buffer, "\r\n", map_to_buffer_size);
 
-    response->field_line = strdup(map_to_buffer);
+    response->total_size += map_to_buffer_size;
+    response->field_line_len = map_to_buffer_size;
+    response->field_line = (unsigned char *)strdup(map_to_buffer);
   }
 
   if (!builder->data || !builder->headers) {
+    response->total_size += 2;
     return response;
   }
 
-  // if content-length is not set, we will try to write until we see the
-  // first zero value in `data` and set the length according to it
   bstring content_length_str =
       Hashmap_get(builder->headers, bfromcstr("Content-Length"));
   if (!content_length_str) {
   } else {
     long content_length;
     parse_long(bdata((bstring)content_length_str), &content_length);
-    size_t new_len = strlen(response->field_line) + content_length + 1;
+    response->total_size += content_length;
+    response->field_line_len += content_length;
+
+    size_t current_len = strlen((char *)response->field_line);
+    size_t new_len = current_len + content_length + 1;
     response->field_line = realloc(response->field_line, new_len);
-    strncat(response->field_line, builder->data, new_len);
+
+    for (int i = 0; (i + current_len) < new_len; i++) {
+      response->field_line[i + current_len] = builder->data[i];
+    }
   }
+
+  response->total_size += 2;
 
   return response;
 }

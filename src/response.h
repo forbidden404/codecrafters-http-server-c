@@ -13,15 +13,15 @@ enum http_status {
 
 struct http_response;
 
-struct http_response *create_plain_message(const char *message,
-                                           Hashmap *request_headers);
-char *http_response_to_buffer(const struct http_response *response);
+size_t http_response_size(const struct http_response *response);
+unsigned char *http_response_to_buffer(const struct http_response *response);
 void http_response_destroy(struct http_response *response);
 
 enum HTTP_RESPONSE_OPTIONS {
   HTTP_VERSION,
   HEADERS,
   BODY,
+  COMPRESSION_GZIP,
 };
 
 struct http_response_builder;
@@ -31,6 +31,8 @@ create_http_response_builder(enum http_status status_code);
 void destroy_http_response_builder(struct http_response_builder *builder);
 void http_response_builder_option(struct http_response_builder *builder,
                                   int option, ...);
+void http_response_builder_plain_message(struct http_response_builder *builder,
+                                         const char *message);
 struct http_response *
 http_response_builder_construct(struct http_response_builder *builder);
 

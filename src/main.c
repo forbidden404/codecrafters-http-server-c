@@ -129,9 +129,9 @@ int main(int argc, char *argv[]) {
               continue;
             }
 
-            char *response_buffer = http_response_to_buffer(response);
+            unsigned char *response_buffer = http_response_to_buffer(response);
 
-            log_send(socket_fd, response_buffer, strlen(response_buffer));
+            log_send(socket_fd, response_buffer, http_response_size(response));
 
             http_response_destroy(response);
             free(response_buffer);
@@ -174,7 +174,7 @@ void send_bad_request_message(int socket_fd) {
   struct http_response_builder *builder =
       create_http_response_builder(HTTP_BAD_REQUEST);
   struct http_response *response = http_response_builder_construct(builder);
-  char *bad_request_message = http_response_to_buffer(response);
+  char *bad_request_message = (char *)http_response_to_buffer(response);
 
   log_send(socket_fd, bad_request_message, strlen(bad_request_message));
 
@@ -186,7 +186,7 @@ void send_not_found_message(int socket_fd) {
   struct http_response_builder *builder =
       create_http_response_builder(HTTP_NOT_FOUND);
   struct http_response *response = http_response_builder_construct(builder);
-  char *not_found_message = http_response_to_buffer(response);
+  char *not_found_message = (char *)http_response_to_buffer(response);
 
   log_send(socket_fd, not_found_message, strlen(not_found_message));
 
