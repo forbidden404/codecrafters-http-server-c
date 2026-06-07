@@ -309,7 +309,7 @@ http_response_builder_construct(struct http_response_builder *builder) {
     }
   }
 
-  response->total_size += 2;
+  response->total_size += 4;
 
   return response;
 }
