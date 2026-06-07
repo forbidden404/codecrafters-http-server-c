@@ -201,7 +201,7 @@ void http_response_builder_option(struct http_response_builder *builder,
     builder->headers = NULL;
     break;
   case BODY:
-    long content_length;
+    long content_length = 0;
     parse_long(bdata((bstring)Hashmap_get(builder->headers,
                                           bfromcstr("Content-Length"))),
                &content_length);
