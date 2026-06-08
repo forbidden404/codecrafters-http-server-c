@@ -305,7 +305,6 @@ http_response_builder_construct(struct http_response_builder *builder) {
     response->field_line = realloc(response->field_line, new_len);
 
     for (int i = 0; (i + current_len) < new_len; i++) {
-      printf("builder->data[%d]: %c\n", i, builder->data[i]);
       response->field_line[i + current_len] = builder->data[i];
     }
   }
