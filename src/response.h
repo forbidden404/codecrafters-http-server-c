@@ -22,6 +22,7 @@ enum HTTP_RESPONSE_OPTIONS {
   HEADERS,
   BODY,
   COMPRESSION_GZIP,
+  CLOSE,
 };
 
 struct http_response_builder;

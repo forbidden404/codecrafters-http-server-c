@@ -16,6 +16,14 @@ const size_t routes_len = 4;
 char *headers_body_to_field_line(Hashmap *headers, char *buffer,
                                  size_t buffer_size);
 
+void add_connection_close_if_needed(const struct http_request *request,
+                                    struct http_response_builder *builder) {
+  bstring connection = Hashmap_get(request->headers, bfromcstr("Connection"));
+  if (connection && bstrcmp(connection, bfromcstr("close")) == 0) {
+    http_response_builder_option(builder, CLOSE);
+  }
+}
+
 struct http_response *route_root(const struct http_request *request,
                                  Hashmap *params) {
   if (strncmp(request->method, "GET", 3) != 0) {
@@ -23,6 +31,7 @@ struct http_response *route_root(const struct http_request *request,
   }
 
   struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
+  add_connection_close_if_needed(request, builder);
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
 
@@ -50,6 +59,7 @@ struct http_response *route_echo(const struct http_request *request,
     }
   }
 
+  add_connection_close_if_needed(request, builder);
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
 
@@ -65,6 +75,7 @@ struct http_response *route_user_agent(const struct http_request *request,
 
   struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
   http_response_builder_plain_message(builder, bdata((bstring)result));
+  add_connection_close_if_needed(request, builder);
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
 
@@ -121,6 +132,7 @@ struct http_response *get_files(const struct http_request *request,
 
   http_response_builder_option(builder, HEADERS, headers);
   http_response_builder_option(builder, BODY, buffer);
+  add_connection_close_if_needed(request, builder);
 
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
@@ -164,6 +176,7 @@ struct http_response *post_files(const struct http_request *request,
 
   struct http_response_builder *builder =
       create_http_response_builder(HTTP_CREATED);
+  add_connection_close_if_needed(request, builder);
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
   return response;

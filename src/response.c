@@ -101,6 +101,8 @@ struct http_response_builder {
   Hashmap *headers;
 
   unsigned char *data;
+
+  int should_close;
 };
 
 struct http_response_builder *
@@ -109,6 +111,7 @@ create_http_response_builder(enum http_status status_code) {
 
   builder->http_version = strdup("HTTP/1.1");
   builder->status_code = status_code;
+  builder->should_close = 0;
 
   return builder;
 }
@@ -149,6 +152,10 @@ void http_response_builder_option(struct http_response_builder *builder,
     break;
   case HEADERS:
     builder->headers = va_arg(args, Hashmap *);
+    if (builder->should_close) {
+      Hashmap_set(builder->headers, bfromcstr("Connection"),
+                  bfromcstr("close"));
+    }
     break;
   case -HEADERS:
     builder->headers = NULL;
@@ -158,6 +165,9 @@ void http_response_builder_option(struct http_response_builder *builder,
     break;
   case -BODY:
     builder->data = NULL;
+    break;
+  case CLOSE:
+    builder->should_close = 1;
     break;
   case COMPRESSION_GZIP:
     if (builder->data && builder->headers) {
@@ -267,6 +277,11 @@ http_response_builder_construct(struct http_response_builder *builder) {
     break;
   }
   response->total_size += strlen(response->reason_phrase) + 2;
+
+  if (builder->should_close && !builder->headers) {
+    builder->headers = Hashmap_create(NULL, NULL);
+    Hashmap_set(builder->headers, bfromcstr("Connection"), bfromcstr("close"));
+  }
 
   if (builder->headers) {
     map_to_buffer_size = 0;
