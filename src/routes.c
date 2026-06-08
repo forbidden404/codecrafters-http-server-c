@@ -19,8 +19,8 @@ char *headers_body_to_field_line(Hashmap *headers, char *buffer,
 void add_connection_close_if_needed(const struct http_request *request,
                                     struct http_response_builder *builder) {
   bstring connection = Hashmap_get(request->headers, bfromcstr("Connection"));
-  printf("Connection: %s\n", bdata((bstring)connection));
   if (connection && bstrcmp(connection, bfromcstr("close")) == 0) {
+    printf("Connection: %s\n", bdata((bstring)connection));
     http_response_builder_option(builder, CLOSE);
   }
 }
