@@ -281,7 +281,7 @@ http_response_builder_construct(struct http_response_builder *builder) {
     map_to_buffer = realloc(map_to_buffer, map_to_buffer_size);
     strncat(map_to_buffer, "\r\n", map_to_buffer_size);
 
-    response->total_size += map_to_buffer_size;
+    response->total_size += map_to_buffer_size - 1;
     response->field_line_len = map_to_buffer_size;
     response->field_line = (unsigned char *)strdup(map_to_buffer);
   }
@@ -305,11 +305,10 @@ http_response_builder_construct(struct http_response_builder *builder) {
     response->field_line = realloc(response->field_line, new_len);
 
     for (int i = 0; (i + current_len) < new_len; i++) {
+      printf("builder->data[%d]: %c\n", i, builder->data[i]);
       response->field_line[i + current_len] = builder->data[i];
     }
   }
-
-  response->total_size += 2;
 
   return response;
 }
