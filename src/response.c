@@ -281,7 +281,7 @@ http_response_builder_construct(struct http_response_builder *builder) {
     map_to_buffer = realloc(map_to_buffer, map_to_buffer_size);
     strncat(map_to_buffer, "\r\n", map_to_buffer_size);
 
-    response->total_size += map_to_buffer_size - 1;
+    response->total_size += map_to_buffer_size - 3;
     response->field_line_len = map_to_buffer_size;
     response->field_line = (unsigned char *)strdup(map_to_buffer);
   }
