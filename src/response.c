@@ -168,6 +168,10 @@ void http_response_builder_option(struct http_response_builder *builder,
     break;
   case CLOSE:
     builder->should_close = 1;
+    if (builder->headers) {
+      Hashmap_set(builder->headers, bfromcstr("Connection"),
+                  bfromcstr("close"));
+    }
     break;
   case COMPRESSION_GZIP:
     if (builder->data && builder->headers) {
