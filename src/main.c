@@ -16,7 +16,34 @@
 
 #define HTTP_BUFFER_SIZE 1024
 
+static void printchar(unsigned char theChar) {
+
+  switch (theChar) {
+
+  case '\n':
+    printf("\\n\n");
+    break;
+  case '\r':
+    printf("\\r");
+    break;
+  case '\t':
+    printf("\\t");
+    break;
+  default:
+    if ((theChar < 0x20) || (theChar > 0x7f)) {
+      printf("\\%03o", (unsigned char)theChar);
+    } else {
+      printf("%c", theChar);
+    }
+    break;
+  }
+}
+
 static void log_send(int socket_fd, const void *buffer, size_t buffer_size) {
+  unsigned char *byte_array = (unsigned char *)buffer;
+  for (int i = 0; i < buffer_size; i++) {
+    printchar(byte_array[i]);
+  }
   if (send(socket_fd, buffer, buffer_size, 0) == -1) {
     printf("Message sending failed: %d: %s \n", errno, strerror(errno));
   }
