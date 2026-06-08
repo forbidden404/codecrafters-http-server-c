@@ -190,7 +190,7 @@ int route_matches(const struct route *route, const char *path) {
 }
 
 void send_close_connection(int socket_fd) {
-  char *close_connection = "Connection: close";
+  char *close_connection = "HTTP/1.1\r\nConnection: close";
   log_send(socket_fd, close_connection, strlen(close_connection));
 }
 
