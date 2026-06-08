@@ -101,8 +101,8 @@ int main(int argc, char *argv[]) {
 
       char *buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
       int should_close = 0;
-      while (recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0 &&
-             should_close == 0) {
+      while (should_close == 0 &&
+             recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0) {
         struct http_request *request = http_request_from_buffer(buffer);
         if (request == NULL) {
           send_bad_request_message(socket_fd, should_close);
