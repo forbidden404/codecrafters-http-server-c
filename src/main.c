@@ -24,6 +24,7 @@ static void log_send(int socket_fd, const void *buffer, size_t buffer_size) {
 
 int route_matches(const struct route *route, const char *path);
 
+void send_close_connection(int socket_fd);
 void send_bad_request_message(int socket_fd);
 void send_not_found_message(int socket_fd);
 
@@ -100,11 +101,22 @@ int main(int argc, char *argv[]) {
       close(server_fd);
 
       char *buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
-      while (recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0) {
+      int should_close = 0;
+      while (recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0 &&
+             should_close == 0) {
         struct http_request *request = http_request_from_buffer(buffer);
         if (request == NULL) {
           send_bad_request_message(socket_fd);
           break;
+        }
+
+        bstring connection =
+            Hashmap_get(request->headers, bfromcstr("Connection"));
+        if (connection && bstrcmp(connection, bfromcstr("close")) == 0) {
+          send_close_connection(socket_fd);
+          http_request_destroy(request);
+          should_close = 1;
+          continue;
         }
 
         int index = 0;
@@ -175,6 +187,11 @@ int route_matches(const struct route *route, const char *path) {
   }
 
   return 0;
+}
+
+void send_close_connection(int socket_fd) {
+  char *close_connection = "Connection: close";
+  log_send(socket_fd, close_connection, strlen(close_connection));
 }
 
 void send_bad_request_message(int socket_fd) {
