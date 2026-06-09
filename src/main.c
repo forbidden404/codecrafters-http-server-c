@@ -186,8 +186,6 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      printf("Should close\n");
-
       if (buffer) {
         free(buffer);
       }
