@@ -2,10 +2,13 @@
 #include <getopt.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/signal.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "bstrlib.h"
@@ -20,6 +23,18 @@ static void log_send(int socket_fd, const void *buffer, size_t buffer_size) {
   if (send(socket_fd, buffer, buffer_size, 0) == -1) {
     printf("Message sending failed: %d: %s \n", errno, strerror(errno));
   }
+}
+
+void sigchld_handler(int s) {
+  (void)s; // quiet unused variable warning
+
+  // waitpid() might overwrite errno, so we save and restore it:
+  int saved_errno = errno;
+
+  while (waitpid(-1, NULL, WNOHANG) > 0)
+    ;
+
+  errno = saved_errno;
 }
 
 int route_matches(const struct route *route, const char *path);
@@ -87,6 +102,15 @@ int main(int argc, char *argv[]) {
 
   client_addr_len = sizeof(client_addr);
 
+  struct sigaction sa;
+  sa.sa_handler = sigchld_handler; // reap all dead processes
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+    perror("sigaction");
+    exit(1);
+  }
+
   int socket_fd = 0;
   while (1) {
     socket_fd = accept(server_fd, (struct sockaddr *)&client_addr,
@@ -99,19 +123,20 @@ int main(int argc, char *argv[]) {
     if (!fork()) {
       close(server_fd);
 
-      char *buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
+      char *buffer = malloc((HTTP_BUFFER_SIZE + 1) * sizeof(char));
       int should_close = 0;
-      while (should_close == 0 &&
-             recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0) > 0) {
+      ssize_t bytes_read = recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0);
+      while (should_close == 0 && bytes_read > 0) {
+        buffer[bytes_read] = 0;
+
         struct http_request *request = http_request_from_buffer(buffer);
         if (request == NULL) {
           send_bad_request_message(socket_fd, should_close);
           break;
         }
 
-        bstring connection =
-            Hashmap_get(request->headers, bfromcstr("Connection"));
-        if (connection && bstrcmp(connection, bfromcstr("close")) == 0) {
+        bstring connection = Hashmap_get_cstr(request->headers, "Connection");
+        if (connection && biseqcstr(connection, "close")) {
           should_close = 1;
         }
 
@@ -134,6 +159,7 @@ int main(int argc, char *argv[]) {
                 routes[index].handler(request, params);
 
             if (response == NULL) {
+              Hashmap_destroy(params);
               continue;
             }
 
@@ -141,6 +167,7 @@ int main(int argc, char *argv[]) {
 
             log_send(socket_fd, response_buffer, http_response_size(response));
 
+            Hashmap_destroy(params);
             http_response_destroy(response);
             free(response_buffer);
 
@@ -154,9 +181,12 @@ int main(int argc, char *argv[]) {
 
         http_request_destroy(request);
 
-        free(buffer);
-        buffer = malloc(HTTP_BUFFER_SIZE * sizeof(char));
+        if (!should_close) {
+          bytes_read = recv(socket_fd, buffer, HTTP_BUFFER_SIZE, 0);
+        }
       }
+
+      printf("Should close\n");
 
       if (buffer) {
         free(buffer);
@@ -169,6 +199,9 @@ int main(int argc, char *argv[]) {
     close(socket_fd);
   }
 
+  if (directory) {
+    free(directory);
+  }
   close(server_fd);
 
   return 0;

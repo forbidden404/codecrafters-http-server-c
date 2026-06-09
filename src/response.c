@@ -52,6 +52,7 @@ unsigned char *http_response_to_buffer(const struct http_response *response) {
   for (int i = 0; offset < status_code_len; offset++, i++) {
     buffer[offset] = status_code_str[i];
   }
+  free(status_code_str);
 
   buffer[offset++] = ' ';
 
@@ -185,19 +186,23 @@ void http_response_builder_option(struct http_response_builder *builder,
         size_t output_len = 0;
 
         if (gzip_compress((char *)builder->data, content_length, &output,
-                          &output_len) != 0) {
+                          &output_len) == 0) {
+          char *output_len_str = calloc(BUFFER_SIZE, sizeof(char));
+          snprintf(output_len_str, BUFFER_SIZE, "%lu", output_len);
+          Hashmap_delete(builder->headers, content_length_key);
+          Hashmap_set(builder->headers, content_length_key,
+                      bfromcstr(output_len_str));
+
+          Hashmap_set(builder->headers, bfromcstr("Content-Encoding"),
+                      bfromcstr("gzip"));
+
+          builder->data = realloc(builder->data, output_len);
+
+          memcpy(builder->data, output, output_len);
+
+          free(output);
+          free(output_len_str);
         }
-
-        char *output_len_str = calloc(BUFFER_SIZE, sizeof(char));
-        snprintf(output_len_str, BUFFER_SIZE, "%lu", output_len);
-        Hashmap_delete(builder->headers, content_length_key);
-        Hashmap_set(builder->headers, content_length_key,
-                    bfromcstr(output_len_str));
-
-        Hashmap_set(builder->headers, bfromcstr("Content-Encoding"),
-                    bfromcstr("gzip"));
-
-        memcpy(builder->data, output, output_len);
       }
     }
     break;
@@ -219,37 +224,37 @@ void http_response_builder_plain_message(struct http_response_builder *builder,
   http_response_builder_option(builder, BODY, message);
 }
 
-char *map_to_buffer = NULL;
-size_t map_to_buffer_size = 0;
-int traverse_hashmap(HashmapNode *node) {
+int traverse_hashmap(HashmapNode *node, char **buffer, int *current_size) {
   char *key = bdata((bstring)node->key);
   size_t key_len = blength((bstring)node->key);
   char *value = bdata((bstring)node->data);
   size_t value_len = blength((bstring)node->data);
 
-  size_t total_size = key_len + 2 /* :sp */ + value_len + 2; /* \r\n */
-  map_to_buffer = realloc(map_to_buffer, total_size + map_to_buffer_size + 1);
+  size_t total_size =
+      *current_size + key_len + 2 /* :sp */ + value_len + 2; /* \r\n */
 
-  if (!map_to_buffer) {
+  *buffer = realloc(*buffer, total_size + 1);
+
+  if (!*buffer) {
     return -1;
   }
 
-  if (map_to_buffer_size == 0) {
-    map_to_buffer[0] = 0;
+  if (*current_size == 0) {
+    *buffer[0] = 0;
   }
 
-  map_to_buffer_size += total_size + 1;
+  *current_size = total_size;
 
-  char *buffer = (char *)malloc((1 + total_size) * sizeof(char));
-  if (!buffer) {
+  char *new_buffer = (char *)malloc((1 + total_size) * sizeof(char));
+  if (!new_buffer) {
     return -1;
   }
 
-  sprintf(buffer, "%s: %s\r\n", key, value);
-  strncat(map_to_buffer, buffer, total_size);
-  map_to_buffer[map_to_buffer_size - 1] = 0;
+  sprintf(new_buffer, "%s: %s\r\n", key, value);
+  strncat(*buffer, new_buffer, total_size);
+  int index = (*current_size);
 
-  free(buffer);
+  free(new_buffer);
 
   return 0;
 }
@@ -288,21 +293,19 @@ http_response_builder_construct(struct http_response_builder *builder) {
   }
 
   if (builder->headers) {
-    map_to_buffer_size = 0;
-    if (map_to_buffer) {
-      free(map_to_buffer);
-      map_to_buffer = NULL;
-    }
-    Hashmap_traverse(builder->headers, traverse_hashmap);
+    int map_to_buffer_size = 0;
+    char *buffer = NULL;
+    Hashmap_traverse(builder->headers, traverse_hashmap, &buffer,
+                     &map_to_buffer_size);
 
     // Add empty line
-    map_to_buffer_size += 3;
-    map_to_buffer = realloc(map_to_buffer, map_to_buffer_size);
-    strncat(map_to_buffer, "\r\n", map_to_buffer_size);
+    map_to_buffer_size += 2;
+    buffer = realloc(buffer, map_to_buffer_size);
+    strncat(buffer, "\r\n", map_to_buffer_size);
 
-    response->total_size += map_to_buffer_size - 3;
+    response->total_size += map_to_buffer_size;
     response->field_line_len = map_to_buffer_size;
-    response->field_line = (unsigned char *)strdup(map_to_buffer);
+    response->field_line = (unsigned char *)strdup(buffer);
   }
 
   if (!builder->data || !builder->headers) {
@@ -311,7 +314,7 @@ http_response_builder_construct(struct http_response_builder *builder) {
   }
 
   bstring content_length_str =
-      Hashmap_get(builder->headers, bfromcstr("Content-Length"));
+      Hashmap_get_cstr(builder->headers, "Content-Length");
   if (!content_length_str) {
   } else {
     long content_length;

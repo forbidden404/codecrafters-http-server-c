@@ -80,27 +80,35 @@ struct http_request *http_request_from_buffer(const char *buffer) {
   if (buffer == NULL) {
     return NULL;
   }
-  char *tmp = malloc(strlen(buffer));
+  char *tmp = calloc(strlen(buffer) + 1, sizeof(*tmp));
   memcpy(tmp, buffer, strlen(buffer));
 
   struct http_request *request = calloc(1, sizeof(*request));
 
   char *method = strtok(tmp, " ");
   char *request_target = strtok(NULL, " ");
-  char *http_version = strtok(NULL, "\r\n");
+  char *http_version = strtok(NULL, "\n");
+
+  if (!method || !request_target || !http_version) {
+    return NULL;
+  }
 
   request->method = strdup(method);
   request->request_target = strdup(request_target);
   request->http_version = strdup(http_version);
+  request->headers = Hashmap_create(NULL, NULL);
 
   char *headers_to_parse = strtok(NULL, "\0");
+  if (!headers_to_parse) {
+    free(tmp);
+    return request;
+  }
 
-  request->headers = Hashmap_create(NULL, NULL);
   char *body;
   parse_headers(headers_to_parse, request->headers, &body);
 
   char *content_length_str =
-      bstr2cstr(Hashmap_get(request->headers, bfromcstr("Content-Length")), 0);
+      bstr2cstr(Hashmap_get_cstr(request->headers, "Content-Length"), 0);
   long content_length;
 
   if (content_length_str != NULL &&
@@ -109,6 +117,7 @@ struct http_request *http_request_from_buffer(const char *buffer) {
     memcpy(request->data, strtok(body + 2, "\0"), content_length);
   }
 
+  free(tmp);
   return request;
 }
 

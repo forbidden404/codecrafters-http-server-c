@@ -18,8 +18,8 @@ char *headers_body_to_field_line(Hashmap *headers, char *buffer,
 
 void add_connection_close_if_needed(const struct http_request *request,
                                     struct http_response_builder *builder) {
-  bstring connection = Hashmap_get(request->headers, bfromcstr("Connection"));
-  if (connection && bstrcmp(connection, bfromcstr("close")) == 0) {
+  bstring connection = Hashmap_get_cstr(request->headers, "Connection");
+  if (connection && biseqcstr(connection, "close")) {
     http_response_builder_option(builder, CLOSE);
   }
 }
@@ -40,14 +40,14 @@ struct http_response *route_root(const struct http_request *request,
 
 struct http_response *route_echo(const struct http_request *request,
                                  Hashmap *params) {
-  bstring result = Hashmap_get(params, bfromcstr("param"));
+  bstring result = Hashmap_get_cstr(params, "param");
   struct http_response_builder *builder = create_http_response_builder(HTTP_OK);
   http_response_builder_plain_message(builder, bdata((bstring)result));
 
   bstring accept_encoding =
-      Hashmap_get(request->headers, bfromcstr("Accept-Encoding"));
+      Hashmap_get_cstr(request->headers, "Accept-Encoding");
   if (accept_encoding) {
-    char *accept_encoding_str = bdata((bstring)accept_encoding);
+    char *accept_encoding_str = strdup(bdata((bstring)accept_encoding));
     char *encoding = strtok(accept_encoding_str, " ,\0");
 
     while (encoding != NULL && strcmp(encoding, "gzip") != 0) {
@@ -57,6 +57,8 @@ struct http_response *route_echo(const struct http_request *request,
     if (encoding && strcmp(encoding, "gzip") == 0) {
       http_response_builder_option(builder, COMPRESSION_GZIP);
     }
+
+    free(accept_encoding_str);
   }
 
   add_connection_close_if_needed(request, builder);
@@ -68,7 +70,7 @@ struct http_response *route_echo(const struct http_request *request,
 
 struct http_response *route_user_agent(const struct http_request *request,
                                        Hashmap *params) {
-  bstring result = Hashmap_get(request->headers, bfromcstr("User-Agent"));
+  bstring result = Hashmap_get_cstr(request->headers, "User-Agent");
   if (result == NULL) {
     return NULL;
   }
@@ -84,8 +86,8 @@ struct http_response *route_user_agent(const struct http_request *request,
 
 struct http_response *get_files(const struct http_request *request,
                                 Hashmap *params) {
-  bstring directory = Hashmap_get(params, bfromcstr("directory"));
-  bstring filename = Hashmap_get(params, bfromcstr("param"));
+  bstring directory = Hashmap_get_cstr(params, "directory");
+  bstring filename = Hashmap_get_cstr(params, "param");
   if (directory == NULL || filename == NULL) {
     struct http_response_builder *builder =
         create_http_response_builder(HTTP_BAD_REQUEST);
@@ -103,6 +105,7 @@ struct http_response *get_files(const struct http_request *request,
   if (file == NULL) {
     struct http_response_builder *builder =
         create_http_response_builder(HTTP_NOT_FOUND);
+    add_connection_close_if_needed(request, builder);
     struct http_response *response = http_response_builder_construct(builder);
     destroy_http_response_builder(builder);
     return response;
@@ -132,8 +135,8 @@ struct http_response *get_files(const struct http_request *request,
 
   http_response_builder_option(builder, HEADERS, headers);
   http_response_builder_option(builder, BODY, buffer);
-  add_connection_close_if_needed(request, builder);
 
+  add_connection_close_if_needed(request, builder);
   struct http_response *response = http_response_builder_construct(builder);
   destroy_http_response_builder(builder);
   return response;
@@ -141,16 +144,17 @@ struct http_response *get_files(const struct http_request *request,
 
 struct http_response *post_files(const struct http_request *request,
                                  Hashmap *params) {
-  bstring directory = Hashmap_get(params, bfromcstr("directory"));
-  bstring filename = Hashmap_get(params, bfromcstr("param"));
+  bstring directory = Hashmap_get_cstr(params, "directory");
+  bstring filename = Hashmap_get_cstr(params, "param");
   bstring content_length_str =
-      Hashmap_get(request->headers, bfromcstr("Content-Length"));
+      Hashmap_get_cstr(request->headers, "Content-Length");
   long content_length;
 
-  if (directory == NULL || filename == NULL ||
+  if (directory == NULL || filename == NULL || content_length_str == NULL ||
       parse_long(bdata((bstring)content_length_str), &content_length) != 0) {
     struct http_response_builder *builder =
         create_http_response_builder(HTTP_BAD_REQUEST);
+    add_connection_close_if_needed(request, builder);
     struct http_response *response = http_response_builder_construct(builder);
     destroy_http_response_builder(builder);
     return response;
@@ -165,6 +169,7 @@ struct http_response *post_files(const struct http_request *request,
   if (file == NULL) {
     struct http_response_builder *builder =
         create_http_response_builder(HTTP_INTERNAL_SERVER_ERROR);
+    add_connection_close_if_needed(request, builder);
     struct http_response *response = http_response_builder_construct(builder);
     destroy_http_response_builder(builder);
     return response;

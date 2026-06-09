@@ -21,7 +21,8 @@ typedef struct HashmapNode {
   uint32_t hash;
 } HashmapNode;
 
-typedef int (*Hashmap_traverse_cb)(HashmapNode *node);
+typedef int (*Hashmap_traverse_cb)(HashmapNode *node, char **buffer,
+                                   int *current_buffer_size);
 
 Hashmap *Hashmap_create(Hashmap_compare compare, Hashmap_hash hash);
 void Hashmap_destroy(Hashmap *map);
@@ -29,7 +30,10 @@ void Hashmap_destroy(Hashmap *map);
 int Hashmap_set(Hashmap *map, void *key, void *data);
 void *Hashmap_get(Hashmap *map, void *key);
 
-int Hashmap_traverse(Hashmap *map, Hashmap_traverse_cb traverse_cb);
+int Hashmap_traverse(Hashmap *map, Hashmap_traverse_cb traverse_cb,
+                     char **buffer, int *current_buffer_size);
+
+void *Hashmap_get_cstr(Hashmap *map, const char *key);
 
 void *Hashmap_delete(Hashmap *map, void *key);
 

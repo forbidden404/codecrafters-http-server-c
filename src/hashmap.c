@@ -57,7 +57,10 @@ void Hashmap_destroy(Hashmap *map) {
         DArray *bucket = DArray_get(map->buckets, i);
         if (bucket) {
           for (j = 0; j < DArray_count(bucket); j++) {
-            free(DArray_get(bucket, j));
+            HashmapNode *node = DArray_get(bucket, j);
+            free(node->data);
+            free(node->key);
+            free(node);
           }
           DArray_destroy(bucket);
         }
@@ -152,7 +155,8 @@ error:
   return NULL;
 }
 
-int Hashmap_traverse(Hashmap *map, Hashmap_traverse_cb traverse_cb) {
+int Hashmap_traverse(Hashmap *map, Hashmap_traverse_cb traverse_cb,
+                     char **buffer, int *current_size) {
   int i = 0;
   int j = 0;
   int rc = 0;
@@ -162,7 +166,7 @@ int Hashmap_traverse(Hashmap *map, Hashmap_traverse_cb traverse_cb) {
     if (bucket) {
       for (j = 0; j < DArray_count(bucket); j++) {
         HashmapNode *node = DArray_get(bucket, j);
-        rc = traverse_cb(node);
+        rc = traverse_cb(node, buffer, current_size);
         if (rc != 0)
           return rc;
       }
@@ -193,4 +197,11 @@ void *Hashmap_delete(Hashmap *map, void *key) {
   }
 
   return data;
+}
+
+void *Hashmap_get_cstr(Hashmap *map, const char *key) {
+  bstring lookup_key = bfromcstr(key);
+  void *result = Hashmap_get(map, lookup_key);
+  bdestroy(lookup_key);
+  return result;
 }
